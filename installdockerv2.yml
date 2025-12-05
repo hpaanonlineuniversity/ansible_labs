@@ -1,0 +1,21 @@
+---
+- name: Simple Docker dry-run test
+  hosts: docker_hosts
+  become: true
+
+  tasks:
+    - name: Run curl and dry-run in one command
+      shell: |
+        curl -fsSL https://get.docker.com -o /home/student/get-docker.sh && \
+        chmod +x /home/student/get-docker.sh && \
+        sudo sh /home/student/get-docker.sh
+      register: result
+
+    - name: Show result
+      debug:
+        msg: "{{ result.stdout }}"
+
+    - name: Clean up
+      file:
+        path: /home/student/get-docker.sh
+        state: absent
