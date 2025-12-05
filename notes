@@ -1,0 +1,4 @@
+# On your Ansible control node, check all Docker hosts:
+ansible docker_hosts -m shell -a "docker --version"
+ansible docker_hosts -m shell -a "docker info"
+ansible docker_hosts -m shell -a "docker run --rm hello-world"

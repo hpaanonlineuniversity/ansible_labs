@@ -1,0 +1,31 @@
+---
+- name: Install Haproxy load balancer
+  hosts: load_balancers
+  become: yes
+  roles:
+    - role: geerlingguy.firewall
+      vars:
+        firewall_allowed_tcp_ports:
+          - "22"
+          - "80"
+
+    - role: geerlingguy.haproxy
+      vars:
+        haproxy_frontend_name: 'hafrontend'
+        haproxy_frontend_bind_address: '*'
+        haproxy_frontend_port: '80'
+        haproxy_frontend_mode: 'http'
+
+        haproxy_backend_name: 'habackend'
+        haproxy_backend_mode: 'http'
+        haproxy_backend_balance_method: 'roundrobin'
+        haproxy_backend_httpchk: ''
+
+        haproxy_backend_servers:
+          - name: 'svr01'
+            address: '192.168.100.6:8080'
+          - name: 'svr02'
+            address: '192.168.100.5:8080'
+
+
+            

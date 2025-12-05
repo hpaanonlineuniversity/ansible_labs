@@ -1,0 +1,210 @@
+---
+- name: Install Docker Engine on Linux Mint - Smart Reboot
+  hosts: docker_hosts
+  become: true
+  gather_facts: true
+
+  vars:
+    ubuntu_codename: "jammy"
+    docker_user: "{{ ansible_user }}"
+    reboot_if_changed: true
+
+  tasks:
+    # Initialize change tracker
+    - name: Initialize change tracker
+      set_fact:
+        any_changes: false
+
+    # Task 1: Remove old Docker packages
+    - name: Remove old Docker packages
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+          - docker-compose-v2
+          - docker-doc
+          - podman-docker
+          - containerd
+          - runc
+        state: absent
+        purge: yes
+      ignore_errors: yes
+      register: task_result
+      
+    - name: Update change tracker if packages removed
+      set_fact:
+        any_changes: "{{ any_changes or task_result.changed }}"
+      when: task_result.changed
+
+    # Task 2: Update apt cache
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    # Task 3: Install prerequisites
+    - name: Install required packages
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - software-properties-common
+        state: present
+      register: task_result
+      
+    - name: Update change tracker if packages installed
+      set_fact:
+        any_changes: "{{ any_changes or task_result.changed }}"
+      when: task_result.changed
+
+    # Task 4: Create directory for GPG key
+    - name: Create directory for Docker GPG key
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      register: task_result
+      
+    - name: Update change tracker if directory created
+      set_fact:
+        any_changes: "{{ any_changes or task_result.changed }}"
+      when: task_result.changed
+
+    # Task 5: Download Docker's official GPG key
+    - name: Download Docker GPG key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+        force: yes
+      register: task_result
+      
+    - name: Update change tracker if key downloaded
+      set_fact:
+        any_changes: "{{ any_changes or task_result.changed }}"
+      when: task_result.changed
+
+    # Task 6: Determine Ubuntu codename automatically
+    - name: Detect Ubuntu codename from OS
+      shell: |
+        if [ -f /etc/os-release ]; then
+          . /etc/os-release
+          echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+        else
+          echo "jammy"
+        fi
+      register: detected_codename
+      changed_when: false
+
+    - name: Set Ubuntu codename
+      set_fact:
+        ubuntu_codename: "{{ detected_codename.stdout }}"
+
+    # Task 7: Add Docker repository to apt sources
+    - name: Add Docker repository
+      copy:
+        content: |
+          Types: deb
+          URIs: https://download.docker.com/linux/ubuntu
+          Suites: {{ ubuntu_codename }}
+          Components: stable
+          Architectures: {{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
+          Signed-By: /etc/apt/keyrings/docker.asc
+        dest: /etc/apt/sources.list.d/docker.sources
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Update apt cache
+      register: task_result
+      
+    - name: Update change tracker if repo added
+      set_fact:
+        any_changes: "{{ any_changes or task_result.changed }}"
+      when: task_result.changed
+
+    # Task 8: Install Docker packages
+    - name: Install Docker Engine and plugins
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+      register: task_result
+      
+    - name: Update change tracker if Docker installed
+      set_fact:
+        any_changes: "{{ any_changes or task_result.changed }}"
+      when: task_result.changed
+
+    # Task 9: Start and enable Docker service
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+      register: task_result
+      
+    - name: Update change tracker if service changed
+      set_fact:
+        any_changes: "{{ any_changes or task_result.changed }}"
+      when: task_result.changed
+
+    # Task 10: Add user to docker group
+    - name: Add user to docker group
+      user:
+        name: "{{ docker_user }}"
+        groups: docker
+        append: yes
+      notify: Reload user session
+      register: task_result
+      
+    - name: Update change tracker if user modified
+      set_fact:
+        any_changes: "{{ any_changes or task_result.changed }}"
+      when: task_result.changed
+
+    # Task 11: Verify Docker installation
+    - name: Check Docker version
+      command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Display Docker version
+      debug:
+        msg: "Installed: {{ docker_version.stdout }}"
+
+    # Task 12: Conditional reboot
+    - name: Display change summary
+      debug:
+        msg: "Changes made during installation: {{ any_changes }}"
+        
+    - name: Reboot if changes were made
+      reboot:
+        msg: "Rebooting to apply Docker changes"
+        reboot_timeout: 300
+      when:
+        - reboot_if_changed | bool
+        - any_changes | bool
+      register: reboot_performed
+
+    - name: Display reboot outcome
+      debug:
+        msg: |
+          {{ 'System rebooted to apply changes.' if reboot_performed.changed else 'No reboot needed - no changes detected or reboot disabled.' }}
+          Docker installation complete!
+          
+  handlers:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Reload user session
+      shell: |
+        echo "User added to docker group. Log out/in or run 'newgrp docker'"
+      changed_when: false

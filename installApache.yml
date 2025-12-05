@@ -1,0 +1,35 @@
+---
+- name: Install Apache using galaxy role
+  hosts: web_servers
+  become: yes
+
+  tasks:
+    - name: Create Document root directory for apache_vhosts
+      file:
+        path: "/var/www/example.com/"
+        state: directory
+        owner: "www-data"
+        group: "www-data"
+        mode: '0755'
+    - name: Create index.html for vhost from template
+      template:
+        src: "templates/index.html.j2"
+        dest: "/var/www/example.com/index.html"
+        owner: "www-data"
+        group: "www-data"
+        mode: '0644'
+
+
+  roles:
+    - role: geerlingguy.firewall
+      vars:
+        firewall_allowed_tcp_ports:
+          - "22"
+          - "8080"
+
+    - role: geerlingguy.apache
+      vars:
+        apache_listen_port: 8080 
+        apache_vhosts:
+          - servername: "example.com"
+            documentroot: "/var/www/example.com/" 

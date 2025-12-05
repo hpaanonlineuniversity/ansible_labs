@@ -1,0 +1,27 @@
+---
+- name: Stop PHP Docker Application
+  hosts: docker_hosts
+  become: true
+
+  vars:
+    app_dir: "/opt/php_todo_docker"
+
+  tasks:
+    - name: Stop containers
+      shell: |
+        cd {{ app_dir }}
+        docker compose down
+      register: stop_result
+
+    - name: Show stop status
+      debug:
+        msg: "Application stopped successfully"
+      when: stop_result.changed
+
+    - name: Verify containers stopped
+      shell: docker ps --filter "name=php_todo_docker" --quiet
+      register: running_containers
+
+    - name: Display verification
+      debug:
+        msg: "Containers still running: {{ running_containers.stdout_lines | length }}"
