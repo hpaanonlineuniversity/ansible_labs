@@ -1,0 +1,50 @@
+- name: Simple Docker installation
+  hosts: docker_hosts
+  become: true
+
+  tasks:
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Install or update Docker
+      block:
+        - name: Download Docker installation script
+          get_url:
+            url: https://get.docker.com
+            dest: /home/student/get-docker.sh
+            mode: '0755'
+
+        - name: Run Docker installation script
+          command: /home/student/get-docker.sh
+          register: install_result
+
+        - name: Show installation result
+          debug:
+            msg: "{{ install_result.stdout_lines }}"
+      when: docker_check is failed or docker_check is skipped
+
+    - name: Ensure student is in docker group
+      user:
+        name: student
+        groups: docker
+        append: yes
+      register: user_changed
+
+    - name: Reboot if user group was changed
+      reboot:
+        msg: "Rebooting to apply docker group changes"
+      when: user_changed.changed
+
+    - name: Wait for reboot to complete
+      wait_for_connection:
+        delay: 10
+        timeout: 300
+      when: user_changed.changed
+
+    - name: Clean up installation script
+      file:
+        path: /home/student/get-docker.sh
+        state: absent
